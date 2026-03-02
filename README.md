@@ -39,12 +39,16 @@
 
 1. Clone the repository:
 
+```sh
 git clone https://github.com/yourusername/FastFilter2.git  
 cd FastFilter2  
+```
 
 2. Install dependencies (recommended in a virtual environment):
 
+```sh
 pip install biopython tqdm  
+```
 
 > Python 3.8 or higher is required.  
 
@@ -62,7 +66,9 @@ python FastFilter2.py -i /path/to/sequences -o /path/to/output -j 4
 
 Dry-run example (does not write output files):
 
+```sh
 python FastFilter2.py -i /path/to/sequences -d  
+```
 
 ---
 
@@ -118,11 +124,15 @@ All output is stored in the specified output directory.
 
 Filter paired-end FASTQ files with 4 threads:
 
+```sh
 python FastFilter2.py -i /data/project/fastq -o /data/project/fastfilter -j 4  
+```
 
 Dry-run test:
 
+```sh
 python FastFilter2.py -i /data/project/fastq -d  
+```
 
 Example snippet from `filtering_summary.tsv`:
 
