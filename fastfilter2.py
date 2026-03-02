@@ -1,15 +1,22 @@
 #!/usr/bin/env python3.9
 
 """
-fastfilter_pe.py - Production-ready paired-end FASTQ filtering
+fastfilter2.py - version 2.0
+Author: Lucas da Coste Monteiro <ldmonteiro@fc.ul.pt>
+PI: Margarida Gama-Carvalho <mhcarvalho@ciencias.ulisboa.pt>
 
-Features:
-- Biological filters: length, Ns, homopolymers, average Phred quality
-- Writes **uncompressed FASTQ first** (fast)
-- Automatically compresses with pigz (multi-threaded)
-- Paired-end safe
-- Progress bars with tqdm
-- Summary CSV output
+RNA Systems Biology Lab
+BioISI - Biosystems and Integrative Sciences Institute
+Department of Chemistry and Biochemistry
+Faculty of Sciences, University of Lisbon
+
+(C) 2023-2026
+
+Description:
+------------
+Production-ready paired-end FASTQ filtering with quality control.
+Filters reads by length, ambiguous bases (N), homopolymers, and average Phred score,
+while maintaining paired-end synchronization. Generates gzipped outputs and per-sample summary statistics.
 """
 
 import argparse
