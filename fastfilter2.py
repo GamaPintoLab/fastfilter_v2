@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.9
 """
-FastFilter2: Parallel paired-end FASTQ filter
+FastFilter2: Parallel paired-end FASTQ filter with progress
 Author: Lucas Monteiro | PI: Margarida Gama-Carvalho
 Lab: RNA Systems Biology Lab, BioISI, University of Lisbon
 """
@@ -14,6 +14,7 @@ from itertools import groupby
 from Bio.SeqIO.QualityIO import FastqPhredIterator
 from Bio import SeqIO
 from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
 
 # --------------------------- Defaults --------------------------- #
 MIN_LENGTH_DEFAULT = 25
@@ -82,12 +83,12 @@ def process_paired_file(r1_file, r2_file, output_dir, min_len, min_score, homopo
         r1_iter = FastqPhredIterator(f1)
         r2_iter = FastqPhredIterator(f2)
         chunks = list(chunked_reads(r1_iter, r2_iter))
-
-        # Prepare arguments for parallel map
         args_list = [(chunk, min_len, min_score, homopolymer_coeff) for chunk in chunks]
 
         with Pool(processes=threads) as pool:
-            for filtered_r1, filtered_r2, chunk_total, chunk_passed in pool.map(process_chunk, args_list):
+            # Use tqdm to show progress per chunk
+            for filtered_r1, filtered_r2, chunk_total, chunk_passed in tqdm(pool.imap(process_chunk, args_list), 
+                                                                          total=len(args_list), desc=sample_name, unit="chunk"):
                 SeqIO.write(filtered_r1, out_r1, "fastq")
                 SeqIO.write(filtered_r2, out_r2, "fastq")
                 total_reads += chunk_total
@@ -109,7 +110,7 @@ def write_summary(results, output_dir):
 
 # --------------------------- Main --------------------------- #
 def main():
-    parser = argparse.ArgumentParser(description="FastFilter2: parallel paired-end FASTQ filter")
+    parser = argparse.ArgumentParser(description="FastFilter2: parallel paired-end FASTQ filter with progress")
     parser.add_argument("-l","--minlen", type=int, default=MIN_LENGTH_DEFAULT)
     parser.add_argument("-p","--homopolymerlen", type=int, default=HOMOPOLYMER_COEFF_DEFAULT)
     parser.add_argument("-s","--min-score", type=int, default=MIN_SCORE_DEFAULT)
