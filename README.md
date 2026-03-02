@@ -1,166 +1,140 @@
-# FastFilter2
+# FastFilter PE
 
-**FastFilter2** is a high-performance, threaded FASTQ filter designed for paired-end sequencing data, optimized for downstream analysis with **STAR**. It efficiently filters sequences based on length, quality, homopolymer runs, and ambiguous nucleotides while supporting both `.fastq` and `.fastq.gz` formats. The script produces compressed outputs compatible with STAR and generates a continuous TSV summary of filtering results.
+[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
----
+**FastFilter PE** is a high-performance, production-ready Python tool for filtering paired-end FASTQ files. Designed for bioinformatics pipelines, it provides flexible, reliable, and fast filtering of sequencing data with built-in support for multi-threading, compression, and detailed summaries.
 
-## **Table of Contents**
-
-- [Features](#features)  
-- [Installation](#installation)  
-- [Usage](#usage)  
-- [Command-Line Arguments](#command-line-arguments)  
-- [Workflow](#workflow)  
-- [Output Files](#output-files)  
-- [Example](#example)  
-- [License](#license)  
-- [Acknowledgements](#acknowledgements)  
+This tool is ideal for pre-processing RNA-seq, DNA-seq, or other high-throughput sequencing datasets prior to alignment, assembly, or downstream analysis.
 
 ---
 
-## **Features**
+## Key Features
 
-- Multi-threaded filtering using Python’s `ThreadPoolExecutor`.  
-- Filters sequences by:  
-  - Minimum length  
-  - Average Phred quality score  
-  - Homopolymer runs  
-  - Presence of ambiguous nucleotides (`N`) or dots (`.`)  
-- Supports both `.fastq` and `.fastq.gz` inputs.  
-- Produces gzipped `.fastq.gz` outputs compatible with STAR.  
-- Stacked progress bars per sample using `tqdm`.  
-- Dry-run mode for testing without generating output files.  
-- Continuous TSV summary updates during processing.  
-- Thread-safe logging for professional progress monitoring.  
+- **Biological quality filters**:
+  - Minimum read length
+  - Maximum allowed ambiguous bases (Ns)
+  - Homopolymer detection
+  - Minimum average Phred quality score
+- **Paired-end safe**: Ensures that reads are filtered in pairs, maintaining synchronization between R1 and R2.
+- **High-performance I/O**: Writes uncompressed FASTQ first for speed, then compresses output automatically with `pigz` using multiple threads.
+- **Batch processing**: Efficient batch writing to reduce I/O overhead.
+- **Progress tracking**: Real-time progress bars via `tqdm` for monitoring large datasets.
+- **Summary output**: Generates CSV reports with total reads, passing reads, and pass rates.
 
 ---
 
-## **Installation**
+## Installation
 
-1. Clone the repository:
+Clone the repository and install dependencies:
 
-```sh
-git clone https://github.com/yourusername/FastFilter2.git  
-cd FastFilter2  
-```
+git clone https://github.com/GamaPintoLab/fastfilter2.git
+cd fastfilter2
+pip install -r requirements.txt
 
-2. Install dependencies (recommended in a virtual environment):
+**Dependencies**:
 
-```sh
-pip install biopython tqdm  
-```
-
-> Python 3.8 or higher is required.  
+- Python 3.9 or higher
+- Biopython
+- tqdm
+- pigz (for multi-threaded compression)
 
 ---
 
-## **Usage**
+## Usage
 
-Run FastFilter2 from the command line:
+Run the tool from the command line:
 
-python FastFilter2.py -i /path/to/sequences -o /path/to/output -j 4  
+python fastfilter_pe.py -i /path/to/input_fastq_dir -o /path/to/output_dir -j 4
 
-- `-i` specifies the directory containing paired-end FASTQ files.  
-- `-o` specifies the output directory. If not provided, a `fastfilter` folder will be created next to the input directory.  
-- `-j` specifies the number of CPU threads to use.  
+### Command-line Options
 
-Dry-run example (does not write output files):
+- `-i, --seq-dir` : Input directory containing paired-end FASTQ files (required)
+- `-o, --output-dir` : Directory to write filtered outputs (defaults to `<input_dir>/fastfilter`)
+- `-j, --cpus` : Number of threads for parallel processing and compression (default: 1)
+- `-l, --minlen` : Minimum sequence length (default: 25)
+- `-p, --homopolymerlen` : Maximum allowed homopolymer length (default: 25)
+- `-s, --min-score` : Minimum average Phred quality score (default: 30)
+- `--dryrun` : Run without writing outputs (for testing)
 
-```sh
-python FastFilter2.py -i /path/to/sequences -d  
-```
+### Example
 
----
+python fastfilter_pe.py -i samples/fastq -o results/filtered -j 8 -l 50 -s 20 --dryrun
 
-## **Command-Line Arguments**
-
-- `-i, --sequences-dir` **(required)**: Path to the input FASTQ/FASTQ.gz folder.  
-- `-o, --output-dir`: Path for the output directory (default: `<input_dir>/fastfilter`).  
-- `-l, --minlen`: Minimum sequence length to retain (default: 25).  
-- `-s, --min-score`: Minimum average Phred quality score (default: 30).  
-- `-p, --homopolymerlen`: Maximum allowed homopolymer run length (default: 25).  
-- `-j, --cpus`: Number of threads to use for filtering (default: 1).  
-- `-d, --dryrun`: Execute a dry run without generating output files.  
+This example processes paired-end FASTQ files in `samples/fastq` using 8 CPU threads, filters reads shorter than 50 bases or with average quality below 20, and performs a dry run without writing files.
 
 ---
 
-## **Workflow**
+## How It Works
 
-1. **File Discovery:** Detects paired-end FASTQ files (`*_R1*.fastq*` and `*_R2*.fastq*`).  
-2. **Read Filtering:** Each R1/R2 pair is filtered in a separate thread:  
-   - Compute sequence length and average Phred score.  
-   - Detect maximum homopolymer length.  
-   - Check for ambiguous nucleotides (`N`) or dots (`.`).  
-   - Write passing reads to gzipped FASTQ files.  
-3. **Progress Monitoring:** Each thread has a dedicated `tqdm` progress bar.  
-4. **Summary Generation:** Continuously updates a TSV summary with per-sample statistics:  
-   - Input reads  
-   - Passed read pairs  
-   - Reads passing individually in R1 and R2  
-   - Percentage of read pairs passed  
-5. **Completion Logging:** Reports total execution time.  
+1. **Input parsing**: Reads paired-end FASTQ files and validates file pairs.
+2. **Filtering**: Applies multiple biological filters to each read:
+   - Removes reads with ambiguous bases (N or .)
+   - Filters out reads with homopolymers above a given threshold
+   - Filters based on minimum length and average Phred score
+3. **Batch writing**: Writes passing reads in batches to reduce I/O overhead.
+4. **Compression**: Automatically compresses output FASTQ files with `pigz` for speed and storage efficiency.
+5. **Reporting**: Produces a summary CSV with per-file statistics including total reads, passing reads, and pass rates.
 
 ---
 
-## **Output Files**
+## Output
 
-All output is stored in the specified output directory.
+Filtered paired-end files are named:
 
-- **Filtered FASTQ Files:**  
-  - `<sample>_R1_FILTERED.fastq.gz`  
-  - `<sample>_R2_FILTERED.fastq.gz`  
+`<sample_name>_R1_FILTERED.fastq.gz`  
+`<sample_name>_R2_FILTERED.fastq.gz`  
 
-- **Summary File:**  
-  - `filtering_summary.tsv` – Tab-separated summary of all samples, including:  
-    - Sample name  
-    - Input reads  
-    - Passed pairs  
-    - Passed R1 and R2 reads  
-    - Percent of pairs passing filters  
+Summary CSV:
 
----
+`fastfilter_summary.csv` containing:
 
-## **Example**
-
-Filter paired-end FASTQ files with 4 threads:
-
-```sh
-python FastFilter2.py -i /data/project/fastq -o /data/project/fastfilter -j 4  
-```
-
-Dry-run test:
-
-```sh
-python FastFilter2.py -i /data/project/fastq -d  
-```
-
-Example snippet from `filtering_summary.tsv`:
-
-Sample    Input_Reads    Passed_Pairs    Passed_R1    Passed_R2    Percent_Pairs_Passed  
-sample1    1000000        950000          970000       960000       95.00  
+- file: sample name
+- total_reads: number of reads in input
+- good_reads: reads passing filters
+- pass_rate_pct: percentage of reads passing filters
 
 ---
 
-## **License**
+## Performance
 
-This project is released under the MIT License. See LICENSE file for details.  
-
----
-
-## **Acknowledgements**
-
-- **Author:** Lucas Monteiro  
-- **PI:** Margarida Gama-Carvalho  
-- **Lab:** RNA Systems Biology Lab, BioISI, University of Lisbon  
-- Inspired by previous FastFilter implementations for RNA-Seq preprocessing.  
+- Multi-threaded filtering and compression using `multiprocessing` and `pigz`.
+- Efficient memory usage via batch processing of reads.
+- Suitable for very large FASTQ datasets (tens to hundreds of millions of reads).
 
 ---
+
+## Contributing
+
+We welcome contributions from the community. To contribute:
+
+1. Fork the repository
+2. Create a new branch (`git checkout -b feature-name`)
+3. Implement your changes and test thoroughly
+4. Commit your changes (`git commit -m "Add feature"`)
+5. Push to your branch (`git push origin feature-name`)
+6. Open a Pull Request with a detailed description
 
 ---
 
 ## License
 
-FastFilter is released under the MIT License.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+---
+
+## Contact
+
+For questions or support, open an issue on GitHub or contact the development team at **GamaPintoLab**.
+
+---
+
+## Acknowledgements
+
+- Built on top of the original FastFilter concept  
+- Biopython community for sequence handling tools  
+- `tqdm` for progress visualization  
+- `pigz` for high-speed parallel compression
 
 ---
 
