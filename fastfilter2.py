@@ -2,7 +2,7 @@
 
 """
 fastfilter_pe.py - Paired-end FASTQ filtering for STAR
-Optimized version with batch writing, dry-run, and total reads summary.
+Optimized version with batch writing, dry-run support, and total reads pre-counting.
 """
 
 import argparse
@@ -82,29 +82,42 @@ def filter_sequence(record):
     return True
 
 # ---------------------
-# Process paired-end file
+# Process paired-end file with pre-counted total reads
 # ---------------------
 def process_pair(r1_path: Path, r2_path: Path, position: int):
     pair_name = r1_path.stem.replace("_R1", "")
     r1_tmp = output_dir / f"{pair_name}_R1_FILTERED.fastq"
     r2_tmp = output_dir / f"{pair_name}_R2_FILTERED.fastq"
 
-    total_reads = 0
+    # 1️⃣ Count total reads first
+    print(f"[{pair_name}] Counting total reads...")
+    if r1_path.suffix == ".gz":
+        open_func = gzip.open
+        mode = "rt"
+    else:
+        open_func = open
+        mode = "r"
+
+    with open_func(r1_path, mode) as f:
+        total_reads = sum(1 for _ in f) // 4
+    print(f"[{pair_name}] Total reads: {total_reads:,}")
+
     good_reads = 0
     r1_buffer = []
     r2_buffer = []
 
-    with open(r1_path, "r") as r1_in, open(r2_path, "r") as r2_in:
+    # 2️⃣ Filter reads
+    with open_func(r1_path, mode) as r1_in, open_func(r2_path, mode) as r2_in:
         r1_iterator = FastqPhredIterator(r1_in)
         r2_iterator = FastqPhredIterator(r2_in)
 
         for rec1, rec2 in tqdm(zip(r1_iterator, r2_iterator),
                                desc=f"{pair_name}",
+                               total=total_reads,
                                unit="reads",
                                position=position,
                                leave=True,
                                dynamic_ncols=True):
-            total_reads += 1
 
             keep1 = filter_sequence(rec1)
             keep2 = filter_sequence(rec2)
@@ -148,8 +161,8 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Find paired-end FASTQ files
-    r1_files = sorted(seq_dir.glob("*_R1_*.fastq"))
-    r2_files = sorted(seq_dir.glob("*_R2_*.fastq"))
+    r1_files = sorted(seq_dir.glob("*_R1_*.fastq*"))
+    r2_files = sorted(seq_dir.glob("*_R2_*.fastq*"))
 
     if not r1_files or not r2_files or len(r1_files) != len(r2_files):
         print("Error: Paired-end R1/R2 files not found or mismatch in counts.")
@@ -163,7 +176,7 @@ def main():
     with multiprocessing.Pool(processes=num_cpus) as pool:
         results = pool.starmap(process_pair, pool_args)
 
-    # Write summary CSV
+    # Write summary CSV with pass rate
     summary_file = output_dir / "fastfilter_summary.csv"
     with open(summary_file, "w") as f:
         f.write("file,total_reads,good_reads,pass_rate_pct\n")
