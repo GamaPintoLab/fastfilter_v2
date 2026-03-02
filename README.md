@@ -1,157 +1,150 @@
-# FastFilter
+# FastFilter2
 
-**FastFilter** is a high-performance, threaded paired-end FASTQ filter designed for preprocessing RNA-seq data before alignment with STAR. It supports standard and gzipped FASTQ files, applies customizable quality and sequence filters, and produces STAR-compatible gzipped output with detailed logging and summary statistics.
-
----
-
-## Table of Contents
-
-- [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Command-Line Options](#command-line-options)
-- [Filtering Criteria](#filtering-criteria)
-- [Output](#output)
-- [Multi-threading & Progress](#multi-threading--progress)
-- [Examples](#examples)
-- [Logging & Summary](#logging--summary)
-- [License](#license)
+**FastFilter2** is a high-performance, threaded FASTQ filter designed for paired-end sequencing data, optimized for downstream analysis with **STAR**. It efficiently filters sequences based on length, quality, homopolymer runs, and ambiguous nucleotides while supporting both `.fastq` and `.fastq.gz` formats. The script produces compressed outputs compatible with STAR and generates a continuous TSV summary of filtering results.
 
 ---
 
-## Features
+## **Table of Contents**
 
-- Filters paired-end FASTQ files by:
-  - Minimum sequence length
-  - Mean base quality
-  - Homopolymer runs
-  - Ambiguous bases (`N` or `.`)
-- Supports `.fastq` and `.fastq.gz` inputs
-- Produces `.fastq.gz` outputs compatible with STAR
-- Multi-threaded processing with stacked progress bars per sample
-- Dry-run mode for testing
-- Continuous TSV summary updates
-- Logging-based progress tracking instead of print statements
+- [Features](#features)  
+- [Installation](#installation)  
+- [Usage](#usage)  
+- [Command-Line Arguments](#command-line-arguments)  
+- [Workflow](#workflow)  
+- [Output Files](#output-files)  
+- [Example](#example)  
+- [License](#license)  
+- [Acknowledgements](#acknowledgements)  
 
 ---
 
-## Installation
+## **Features**
 
-FastFilter is implemented in Python 3 and requires the following dependencies:
-
-- Python >= 3.7
-- [Biopython](https://biopython.org/)
-- [tqdm](https://tqdm.github.io/)
-
-You can install dependencies via pip:
-
-pip install biopython tqdm
-
-Clone the repository:
-
-git clone https://github.com/yourusername/FastFilter.git
-cd FastFilter
-
-Make the script executable:
-
-chmod +x fastfilter.py
+- Multi-threaded filtering using Python’s `ThreadPoolExecutor`.  
+- Filters sequences by:  
+  - Minimum length  
+  - Average Phred quality score  
+  - Homopolymer runs  
+  - Presence of ambiguous nucleotides (`N`) or dots (`.`)  
+- Supports both `.fastq` and `.fastq.gz` inputs.  
+- Produces gzipped `.fastq.gz` outputs compatible with STAR.  
+- Stacked progress bars per sample using `tqdm`.  
+- Dry-run mode for testing without generating output files.  
+- Continuous TSV summary updates during processing.  
+- Thread-safe logging for professional progress monitoring.  
 
 ---
 
-## Usage
+## **Installation**
 
-Run FastFilter from the command line:
+1. Clone the repository:
 
-./fastfilter.py -i /path/to/fastq_files -o /path/to/output_dir -j 4
+git clone https://github.com/yourusername/FastFilter2.git  
+cd FastFilter2  
 
-**Arguments:**
+2. Install dependencies (recommended in a virtual environment):
 
-- `-i / --sequences-dir` (required): Directory containing paired-end FASTQ files
-- `-o / --output-dir` (optional): Directory to write filtered FASTQ files (default: `../fastfilter`)
-- `-j / --cpus` (optional): Number of threads for parallel processing (default: 1)
-- `-d / --dryrun` (optional): Perform a dry run without writing output
+pip install biopython tqdm  
 
----
-
-## Command-Line Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| -l, --minlen | Minimum sequence length to retain | 25 |
-| -s, --min-score | Minimum mean Phred quality score | 30 |
-| -p, --homopolymerlen | Maximum allowed homopolymer run | 25 |
-| -i, --sequences-dir | Directory containing input FASTQ files | Required |
-| -o, --output-dir | Directory for filtered FASTQ files | `../fastfilter` |
-| -j, --cpus | Number of threads to use | 1 |
-| -d, --dryrun | Perform filtering without writing files | False |
+> Python 3.8 or higher is required.  
 
 ---
 
-## Filtering Criteria
+## **Usage**
 
-Each read in a paired-end FASTQ file is evaluated against the following criteria:
+Run FastFilter2 from the command line:
 
-1. **Minimum Length:** Reads shorter than the specified length are discarded.
-2. **Mean Quality Score:** Reads with mean Phred score below the threshold are discarded.
-3. **Homopolymer Runs:** Reads containing homopolymer runs longer than the threshold are discarded.
-4. **Ambiguous Bases:** Reads containing `N` or `.` are discarded.
+python FastFilter2.py -i /path/to/sequences -o /path/to/output -j 4  
 
-A pair is retained only if both reads pass all filters.
+- `-i` specifies the directory containing paired-end FASTQ files.  
+- `-o` specifies the output directory. If not provided, a `fastfilter` folder will be created next to the input directory.  
+- `-j` specifies the number of CPU threads to use.  
 
----
+Dry-run example (does not write output files):
 
-## Output
-
-Filtered reads are written as gzipped FASTQ files with `_FILTERED` suffix:
-
-- `<sample>_R1_FILTERED.fastq.gz`
-- `<sample>_R2_FILTERED.fastq.gz`
-
-Additionally, a TSV summary is generated:
-
-`filtering_summary.tsv`
-
-Columns include:
-
-- Sample
-- Input Reads
-- Passed Pairs
-- Passed R1
-- Passed R2
-- Percent Pairs Passed
+python FastFilter2.py -i /path/to/sequences -d  
 
 ---
 
-## Multi-threading & Progress
+## **Command-Line Arguments**
 
-FastFilter uses Python's `concurrent.futures.ThreadPoolExecutor` to process multiple samples in parallel. Each sample displays a dedicated progress bar using `tqdm` for real-time monitoring.
-
----
-
-## Examples
-
-Filter a directory with 4 threads:
-
-./fastfilter.py -i /data/fastq_samples -o /data/fastq_filtered -j 4
-
-Perform a dry run without writing output:
-
-./fastfilter.py -i /data/fastq_samples -d
-
-Filter using custom thresholds:
-
-./fastfilter.py -i /data/fastq_samples -l 50 -s 35 -p 20 -j 8
+- `-i, --sequences-dir` **(required)**: Path to the input FASTQ/FASTQ.gz folder.  
+- `-o, --output-dir`: Path for the output directory (default: `<input_dir>/fastfilter`).  
+- `-l, --minlen`: Minimum sequence length to retain (default: 25).  
+- `-s, --min-score`: Minimum average Phred quality score (default: 30).  
+- `-p, --homopolymerlen`: Maximum allowed homopolymer run length (default: 25).  
+- `-j, --cpus`: Number of threads to use for filtering (default: 1).  
+- `-d, --dryrun`: Execute a dry run without generating output files.  
 
 ---
 
-## Logging & Summary
+## **Workflow**
 
-All progress, warnings, and errors are logged using Python's `logging` module with timestamps. At the end of the run, a detailed TSV summary is written, including read counts before and after filtering.
+1. **File Discovery:** Detects paired-end FASTQ files (`*_R1*.fastq*` and `*_R2*.fastq*`).  
+2. **Read Filtering:** Each R1/R2 pair is filtered in a separate thread:  
+   - Compute sequence length and average Phred score.  
+   - Detect maximum homopolymer length.  
+   - Check for ambiguous nucleotides (`N`) or dots (`.`).  
+   - Write passing reads to gzipped FASTQ files.  
+3. **Progress Monitoring:** Each thread has a dedicated `tqdm` progress bar.  
+4. **Summary Generation:** Continuously updates a TSV summary with per-sample statistics:  
+   - Input reads  
+   - Passed read pairs  
+   - Reads passing individually in R1 and R2  
+   - Percentage of read pairs passed  
+5. **Completion Logging:** Reports total execution time.  
 
-Example log entry:
+---
 
-2026-03-02 14:22:05 | INFO | Processing sample: Sample_01  
-2026-03-02 14:25:13 | INFO | Finished sample: Sample_01 | 950000/1000000 pairs passed  
+## **Output Files**
+
+All output is stored in the specified output directory.
+
+- **Filtered FASTQ Files:**  
+  - `<sample>_R1_FILTERED.fastq.gz`  
+  - `<sample>_R2_FILTERED.fastq.gz`  
+
+- **Summary File:**  
+  - `filtering_summary.tsv` – Tab-separated summary of all samples, including:  
+    - Sample name  
+    - Input reads  
+    - Passed pairs  
+    - Passed R1 and R2 reads  
+    - Percent of pairs passing filters  
+
+---
+
+## **Example**
+
+Filter paired-end FASTQ files with 4 threads:
+
+python FastFilter2.py -i /data/project/fastq -o /data/project/fastfilter -j 4  
+
+Dry-run test:
+
+python FastFilter2.py -i /data/project/fastq -d  
+
+Example snippet from `filtering_summary.tsv`:
+
+Sample    Input_Reads    Passed_Pairs    Passed_R1    Passed_R2    Percent_Pairs_Passed  
+sample1    1000000        950000          970000       960000       95.00  
+
+---
+
+## **License**
+
+This project is released under the MIT License. See LICENSE file for details.  
+
+---
+
+## **Acknowledgements**
+
+- **Author:** Lucas Monteiro  
+- **PI:** Margarida Gama-Carvalho  
+- **Lab:** RNA Systems Biology Lab, BioISI, University of Lisbon  
+- Inspired by previous FastFilter implementations for RNA-Seq preprocessing.  
+
+---
 
 ---
 
