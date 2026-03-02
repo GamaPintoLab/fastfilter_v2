@@ -1,9 +1,9 @@
-# FastFilter PE
+# FastFilter2
 
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**FastFilter PE** is a high-performance, production-ready Python tool for filtering paired-end FASTQ files. Designed for bioinformatics pipelines, it provides flexible, reliable, and fast filtering of sequencing data with built-in support for multi-threading, compression, and detailed summaries.
+**FastFilter2** is a high-performance, production-ready Python tool for filtering paired-end FASTQ files. Designed for bioinformatics pipelines, it provides flexible, reliable, and fast filtering of sequencing data with built-in support for multi-threading, compression, and detailed summaries.
 
 This tool is ideal for pre-processing RNA-seq, DNA-seq, or other high-throughput sequencing datasets prior to alignment, assembly, or downstream analysis.
 
@@ -48,7 +48,7 @@ pip install -r requirements.txt
 Run the tool from the command line:
 
 ```sh
-python fastfilter_pe.py -i /path/to/input_fastq_dir -o /path/to/output_dir -j 4
+fastfilter2 -i /path/to/input_fastq_dir -o /path/to/output_dir -j 4
 ```
 
 ### Command-line Options
@@ -64,7 +64,7 @@ python fastfilter_pe.py -i /path/to/input_fastq_dir -o /path/to/output_dir -j 4
 ### Example
 
 ```sh
-python fastfilter_pe.py -i samples/fastq -o results/filtered -j 8 -l 50 -s 20 --dryrun
+fastfilter2 -i samples/fastq -o results/filtered -j 8 -l 50 -s 20 --dryrun
 ```
 
 This example processes paired-end FASTQ files in `samples/fastq` using 8 CPU threads, filters reads shorter than 50 bases or with average quality below 20, and performs a dry run without writing files.
