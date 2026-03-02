@@ -1,149 +1,158 @@
 #!/usr/bin/env python3.9
-"""
-FastFilter2: Parallel paired-end FASTQ filter with progress
-Author: Lucas Monteiro | PI: Margarida Gama-Carvalho
-Lab: RNA Systems Biology Lab, BioISI, University of Lisbon
-"""
-
 import argparse
 import gzip
+import multiprocessing
 from pathlib import Path
-import csv
 import time
-from itertools import groupby
-from Bio.SeqIO.QualityIO import FastqPhredIterator
 from Bio import SeqIO
-from multiprocessing import Pool, cpu_count
-from tqdm import tqdm
+from Bio.SeqIO.QualityIO import FastqPhredIterator
+import csv
 
-# --------------------------- Defaults --------------------------- #
+# -------------------- Defaults -------------------- #
 MIN_LENGTH_DEFAULT = 25
 HOMOPOLYMER_COEFF_DEFAULT = 25
 MIN_SCORE_DEFAULT = 30
-CHUNK_SIZE = 100_000  # reads per chunk for parallel processing
 
-# --------------------------- Sequence Analysis --------------------------- #
-def analyze_sequence(record, min_len, min_score, homopolymer_coeff):
+# -------------------- Globals -------------------- #
+min_seq_len = MIN_LENGTH_DEFAULT
+homopolymer_coeff = HOMOPOLYMER_COEFF_DEFAULT
+min_score = MIN_SCORE_DEFAULT
+seq_dir = None
+output_dir = None
+dryrun = False
+
+
+# -------------------- Utilities -------------------- #
+def find_homopolymers(seq: str) -> dict:
+    """Return dict indicating if sequence contains homopolymers of length homopolymer_coeff"""
+    return {
+        "A": int("A" * homopolymer_coeff in seq),
+        "T": int("T" * homopolymer_coeff in seq),
+        "G": int("G" * homopolymer_coeff in seq),
+        "C": int("C" * homopolymer_coeff in seq),
+    }
+
+
+def analyze_sequence(record):
+    """Analyze sequence and return pass/fail and exclusion reasons"""
+    qual_values = record.letter_annotations.get("phred_quality", [])
+    qual_score = sum(qual_values)/len(qual_values) if qual_values else 0
     seq = str(record.seq)
-    quals = record.letter_annotations.get("phred_quality", [])
-    if len(seq) < min_len:
-        return False
-    mean_q = sum(quals)/len(quals) if quals else 0
-    if mean_q < min_score:
-        return False
-    if max((len(list(g)) for _, g in groupby(seq)), default=0) > homopolymer_coeff:
-        return False
-    if "N" in seq or "." in seq:
-        return False
-    return True
+    homopolymers = find_homopolymers(seq)
+    homopolymer_exist = any(homopolymers.values())
+    n_count = seq.count("N")
+    dot_count = seq.count(".")
 
-# --------------------------- File Handling --------------------------- #
-def open_input(file_path):
-    return gzip.open(file_path, "rt") if str(file_path).endswith(".gz") else open(file_path, "r")
+    meets_criteria = (
+        len(seq) >= min_seq_len and
+        n_count == 0 and
+        dot_count == 0 and
+        not homopolymer_exist and
+        qual_score >= min_score
+    )
 
-def open_output(file_path, dry_run=False):
-    if dry_run:
-        return open("/dev/null","w")
-    return gzip.open(file_path.with_suffix(".fastq.gz"), "wt")
+    exclusion_reasons = {
+        "too_short": len(seq) < min_seq_len,
+        "found_n": n_count > 0,
+        "found_dot": dot_count > 0,
+        "found_homopolymer": homopolymer_exist,
+        "low_score": qual_score < min_score
+    }
 
-# --------------------------- Chunking --------------------------- #
-def chunked_reads(r1_iter, r2_iter, chunk_size=CHUNK_SIZE):
-    chunk = []
-    for rec1, rec2 in zip(r1_iter, r2_iter):
-        chunk.append((rec1, rec2))
-        if len(chunk) >= chunk_size:
-            yield chunk
-            chunk = []
-    if chunk:
-        yield chunk
+    return meets_criteria, exclusion_reasons
 
-# --------------------------- Processing --------------------------- #
-def process_chunk(args):
-    chunk, min_len, min_score, homopolymer_coeff = args
-    filtered_r1, filtered_r2 = [], []
-    passed_pairs = 0
-    for r1, r2 in chunk:
-        if analyze_sequence(r1, min_len, min_score, homopolymer_coeff) and \
-           analyze_sequence(r2, min_len, min_score, homopolymer_coeff):
-            filtered_r1.append(r1)
-            filtered_r2.append(r2)
-            passed_pairs += 1
-    return filtered_r1, filtered_r2, len(chunk), passed_pairs
 
-# --------------------------- File Processing --------------------------- #
-def process_paired_file(r1_file, r2_file, output_dir, min_len, min_score, homopolymer_coeff, dry_run, threads):
-    sample_name = r1_file.stem.replace("_R1","")
-    out_r1 = open_output(output_dir / f"{r1_file.stem}_FILTERED", dry_run)
-    out_r2 = open_output(output_dir / f"{r2_file.stem}_FILTERED", dry_run)
+# -------------------- Paired-end parser -------------------- #
+def parse_paired_file(r1_path: Path, r2_path: Path):
+    """Parse a pair of R1/R2 FASTQ files, write filtered .fastq.gz, return stats"""
+    base_name = r1_path.stem.replace("_R1", "")
+    out_r1 = output_dir / f"{r1_path.stem}_FILTERED.fastq.gz"
+    out_r2 = output_dir / f"{r2_path.stem}_FILTERED.fastq.gz"
 
     total_reads = 0
-    passed_pairs = 0
+    good_reads = 0
+    exclusion_counts_r1 = {k:0 for k in ["too_short","found_n","found_dot","found_homopolymer","low_score"]}
+    exclusion_counts_r2 = exclusion_counts_r1.copy()
 
-    with open_input(r1_file) as f1, open_input(r2_file) as f2, out_r1, out_r2:
-        r1_iter = FastqPhredIterator(f1)
-        r2_iter = FastqPhredIterator(f2)
-        chunks = list(chunked_reads(r1_iter, r2_iter))
-        args_list = [(chunk, min_len, min_score, homopolymer_coeff) for chunk in chunks]
+    with gzip.open(out_r1, "wt") as f_out1, gzip.open(out_r2, "wt") as f_out2:
+        with open(r1_path) as f1, open(r2_path) as f2:
+            r1_iter = FastqPhredIterator(f1)
+            r2_iter = FastqPhredIterator(f2)
+            for rec1, rec2 in zip(r1_iter, r2_iter):
+                total_reads += 1
+                passes1, reasons1 = analyze_sequence(rec1)
+                passes2, reasons2 = analyze_sequence(rec2)
 
-        with Pool(processes=threads) as pool:
-            # Use tqdm to show progress per chunk
-            for filtered_r1, filtered_r2, chunk_total, chunk_passed in tqdm(pool.imap(process_chunk, args_list), 
-                                                                          total=len(args_list), desc=sample_name, unit="chunk"):
-                SeqIO.write(filtered_r1, out_r1, "fastq")
-                SeqIO.write(filtered_r2, out_r2, "fastq")
-                total_reads += chunk_total
-                passed_pairs += chunk_passed
+                if passes1 and passes2:
+                    good_reads += 1
+                    SeqIO.write(rec1, f_out1, "fastq")
+                    SeqIO.write(rec2, f_out2, "fastq")
 
-    print(f"{sample_name}: Finished | Total reads: {total_reads} | Passed pairs: {passed_pairs}")
-    return {"sample": sample_name, "total_reads": total_reads, "passed_pairs": passed_pairs}
+                for k, v in reasons1.items():
+                    exclusion_counts_r1[k] += v
+                for k, v in reasons2.items():
+                    exclusion_counts_r2[k] += v
 
-# --------------------------- Summary --------------------------- #
-def write_summary(results, output_dir):
-    summary_path = output_dir / "filtering_summary.tsv"
-    with open(summary_path, "w", newline="") as f:
-        writer = csv.writer(f, delimiter="\t")
-        writer.writerow(["Sample","Total_Reads","Passed_Pairs","Percent_Passed"])
-        for r in results:
-            percent = (r["passed_pairs"]/r["total_reads"]*100) if r["total_reads"]>0 else 0
-            writer.writerow([r["sample"], r["total_reads"], r["passed_pairs"], f"{percent:.2f}"])
-    print(f"Summary written to: {summary_path}")
+    return {
+        "file": base_name,
+        "total_reads": total_reads,
+        "good_reads": good_reads,
+        **{f"R1_{k}": v for k,v in exclusion_counts_r1.items()},
+        **{f"R2_{k}": v for k,v in exclusion_counts_r2.items()}
+    }
 
-# --------------------------- Main --------------------------- #
-def main():
-    parser = argparse.ArgumentParser(description="FastFilter2: parallel paired-end FASTQ filter with progress")
-    parser.add_argument("-l","--minlen", type=int, default=MIN_LENGTH_DEFAULT)
-    parser.add_argument("-p","--homopolymerlen", type=int, default=HOMOPOLYMER_COEFF_DEFAULT)
-    parser.add_argument("-s","--min-score", type=int, default=MIN_SCORE_DEFAULT)
-    parser.add_argument("-i","--sequences-dir", type=str, required=True)
-    parser.add_argument("-o","--output-dir", type=str)
-    parser.add_argument("-t","--threads", type=int, default=cpu_count())
-    parser.add_argument("-d","--dryrun", action="store_true")
+
+# -------------------- Argument parser -------------------- #
+def parse_arguments():
+    global min_seq_len, homopolymer_coeff, min_score, seq_dir, output_dir, dryrun
+    parser = argparse.ArgumentParser(description="Paired-end FASTQ filter with .fastq.gz output")
+    parser.add_argument("-l", "--minlen", type=int, default=MIN_LENGTH_DEFAULT)
+    parser.add_argument("-p", "--homopolymerlen", type=int, default=HOMOPOLYMER_COEFF_DEFAULT)
+    parser.add_argument("-s", "--minscore", type=int, default=MIN_SCORE_DEFAULT)
+    parser.add_argument("-i", "--inputdir", type=str, required=True)
+    parser.add_argument("-o", "--outputdir", type=str)
+    parser.add_argument("--dryrun", action="store_true")
     args = parser.parse_args()
 
-    seq_dir = Path(args.sequences_dir)
-    output_dir = Path(args.output_dir) if args.output_dir else seq_dir.parent / "fastfilter"
+    min_seq_len = args.minlen
+    homopolymer_coeff = args.homopolymerlen
+    min_score = args.minscore
+    dryrun = args.dryrun
+    seq_dir = Path(args.inputdir)
+    output_dir = Path(args.outputdir) if args.outputdir else seq_dir / "fastfilter"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Detect paired files
-    r1_files = sorted(seq_dir.glob("*_R1*.fastq*"))
-    r2_files = sorted(seq_dir.glob("*_R2*.fastq*"))
-    r1_dict = {f.name.replace("_R1","_"): f for f in r1_files}
-    r2_dict = {f.name.replace("_R2","_"): f for f in r2_files}
-    missing_r2 = set(r1_dict) - set(r2_dict)
-    missing_r1 = set(r2_dict) - set(r1_dict)
-    if missing_r2: raise RuntimeError(f"Missing R2 files for: {missing_r2}")
-    if missing_r1: raise RuntimeError(f"Missing R1 files for: {missing_r1}")
-    paired_files = [(r1_dict[k], r2_dict[k]) for k in sorted(r1_dict.keys())]
 
+# -------------------- Main -------------------- #
+def main():
     start_time = time.time()
-    results = []
-    for r1,r2 in paired_files:
-        res = process_paired_file(r1, r2, output_dir, args.minlen, args.min_score, args.homopolymerlen, args.dryrun, args.threads)
-        results.append(res)
+    parse_arguments()
 
-    write_summary(results, output_dir)
-    elapsed = (time.time()-start_time)/60
-    print(f"Filtering completed in {elapsed:.2f} minutes")
+    fastq_r1_files = sorted(seq_dir.glob("*_R1_*.fastq"))
+    fastq_r2_files = sorted(seq_dir.glob("*_R2_*.fastq"))
+    paired_files = list(zip(fastq_r1_files, fastq_r2_files))
+
+    if not paired_files:
+        raise ValueError("No paired-end FASTQ files found in input directory.")
+
+    # Multiprocessing
+    pool = multiprocessing.Pool()
+    results = pool.starmap(parse_paired_file, paired_files)
+    pool.close()
+    pool.join()
+
+    # Write summary CSV
+    summary_file = output_dir / "fastfilter_summary.csv"
+    with open(summary_file, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=results[0].keys())
+        writer.writeheader()
+        for r in results:
+            writer.writerow(r)
+
+    elapsed = (time.time() - start_time)/60
+    print(f"Filtering finished in {elapsed:.2f} min")
+    print(f"Summary saved to {summary_file}")
+
 
 if __name__ == "__main__":
     main()
