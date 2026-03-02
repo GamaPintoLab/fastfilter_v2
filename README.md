@@ -28,9 +28,11 @@ This tool is ideal for pre-processing RNA-seq, DNA-seq, or other high-throughput
 
 Clone the repository and install dependencies:
 
+```sh
 git clone https://github.com/GamaPintoLab/fastfilter2.git
 cd fastfilter2
 pip install -r requirements.txt
+```
 
 **Dependencies**:
 
@@ -45,7 +47,9 @@ pip install -r requirements.txt
 
 Run the tool from the command line:
 
+```sh
 python fastfilter_pe.py -i /path/to/input_fastq_dir -o /path/to/output_dir -j 4
+```
 
 ### Command-line Options
 
@@ -59,7 +63,9 @@ python fastfilter_pe.py -i /path/to/input_fastq_dir -o /path/to/output_dir -j 4
 
 ### Example
 
+```sh
 python fastfilter_pe.py -i samples/fastq -o results/filtered -j 8 -l 50 -s 20 --dryrun
+```
 
 This example processes paired-end FASTQ files in `samples/fastq` using 8 CPU threads, filters reads shorter than 50 bases or with average quality below 20, and performs a dry run without writing files.
 
@@ -104,28 +110,9 @@ Summary CSV:
 
 ---
 
-## Contributing
-
-We welcome contributions from the community. To contribute:
-
-1. Fork the repository
-2. Create a new branch (`git checkout -b feature-name`)
-3. Implement your changes and test thoroughly
-4. Commit your changes (`git commit -m "Add feature"`)
-5. Push to your branch (`git push origin feature-name`)
-6. Open a Pull Request with a detailed description
-
----
-
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-## Contact
-
-For questions or support, open an issue on GitHub or contact the development team at **GamaPintoLab**.
 
 ---
 
