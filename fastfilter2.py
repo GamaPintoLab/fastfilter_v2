@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 
 """
 FastFilter2: High-performance paired-end FASTQ filter for STAR
