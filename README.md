@@ -1,3 +1,5 @@
+# BUGGED NOT FIT FOR USE
+
 # FastFilter2
 
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
