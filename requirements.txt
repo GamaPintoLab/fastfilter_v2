@@ -1,5 +1,9 @@
-biopython>=1.80
-tqdm>=4.65
+# fastfilter dependencies
 
-# System dependency:
-# pigz must be installed separately (Ubuntu: sudo apt install pigz, macOS: brew install pigz)
+# Required
+tqdm>=4.64.0
+
+# Optional — Intel ISA-L accelerated gzip (2-4x faster on .fastq.gz files)
+# Falls back to stdlib gzip automatically if not installed.
+# Recommended for large datasets (>1 GB compressed).
+isal>=1.1.0
