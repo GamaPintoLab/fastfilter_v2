@@ -1,118 +1,65 @@
-# FastFilter2 Upgrade Guide
+# Changelog
 
-This document outlines the changes, improvements, and migration notes for users moving from **FastFilter v1** to **FastFilter2** (v2.0).
-
----
-
-## **Version Overview**
-
-| Feature | FastFilter v1 | FastFilter2 |
-|---------|---------------|-------------|
-| Input file support | `.fastq` | `.fastq` & `.fastq.gz` |
-| Processing | Single-threaded or multiprocessing | Multi-threaded via `multiprocessing.Pool` |
-| Paired-end support | Yes, basic R1/R2 matching | Yes, strict ID matching with synchronized filtering and progress bars |
-| Output | Uncompressed FASTQ | gzipped FASTQ (`.fastq.gz`) compatible with STAR |
-| Logging | Print statements | Thread-safe logging with timestamps and progress feedback |
-| Summary | CSV & TXT reports | Continuous CSV/TSV summary with total reads, passed reads, and percent passed per sample |
-| Dry-run | Yes | Yes, fully supported; no output written |
-| Progress monitoring | None | Stacked progress bars per sample with `tqdm` |
-| Batch writing | No | Yes, faster I/O with configurable batch sizes |
-| Homopolymer detection | Yes, basic | Yes, optimized for speed and accuracy |
-| Quality filtering | Average Phred score | Average Phred score with configurable thresholds |
-| Error handling | Minimal | Robust: R1/R2 mismatches terminate with clear logs |
+All notable changes to fastfilter are documented here.  
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## **Key Improvements in FastFilter2**
+## [2.0.0] — 2026
 
-1. **True Multi-threading for Large Datasets**  
-   - Each paired-end sample is processed in a separate worker process.  
-   - Reduces runtime significantly on multi-core systems.  
-   - Visual stacked progress bars show live progress for all samples.
+Complete rewrite of the original `fastfilter.py`. All filtering logic preserved and validated
+against the original — read counts match exactly on all tested datasets.
 
-2. **Gzipped Input and Output**  
-   - Supports `.fastq.gz` input files directly.  
-   - Outputs are automatically compressed with `pigz` for storage efficiency and STAR compatibility.
+### Added
+- Explicit `-r1` / `-r2` file arguments for paired-end mode replacing directory-based auto-discovery (`-i`)
+- `-r` argument for single-end mode
+- `-n` / `--max-n` flag: configurable maximum N bases per read (default `0`, preserving original behaviour)
+- Per-sample `.summary.csv` in vertical `metric,value` format for readability
+- Summary fields: `pct_pairs_passed`, `r1_pass_rate`, `r2_pass_rate`, `lost_due_to_r1_fail`, `lost_due_to_r2_fail`, `failed_both`, read length min/max/mean/median
+- All filter parameters recorded in every summary file (`min_length`, `homopolymer_len`, `min_score`, `max_n_allowed`, `elapsed_min`)
+- Startup summary block: mode, thresholds, sample list, gzip backend, CPU count
+- Timestamped checkpoint prints every 5 M reads for screen / nohup sessions
+- tqdm progress bar for interactive single-worker runs
+- Runtime read-count mismatch detection: aborts with a clear error if R1 and R2 file lengths differ
+- Input file existence check before any processing begins
+- Argument validation: `--max-n >= 0`, `--cpus >= 1`
+- gzip backend detection: uses [isal](https://github.com/pycompression/python-isal) (Intel ISA-L, 2–4× faster) with silent stdlib fallback
+- `-Z` flag: compression level 1 for fast output
 
-3. **Improved Filtering Logic**  
-   - Minimum sequence length, homopolymers, ambiguous bases, and Phred quality scores enforced per read.  
-   - Reads fail if any criterion is not met, maintaining data integrity for downstream analysis.
+### Changed
+- **BioPython removed** — replaced `FastqPhredIterator` with a custom 4-line FASTQ iterator (`_fastq_iter`) and `SeqIO.write` with a direct string writer (`_write_fastq`)
+- **Pandas removed** — read length statistics use `collections.Counter` instead of `pd.Series`; memory reduced from ~4.7 GB to kilobytes on 167 M reads
+- Homopolymer strings precomputed once per process in `_init_worker` — eliminates 4 string allocations per read call
+- Sequence bases uppercased at read time (normalisation)
+- Median calculation corrected for even-N datasets (averages the two middle values)
+- Worker globals fixed for `multiprocessing.spawn`: `_init_worker` restores runtime thresholds in each spawned worker (previously workers used module defaults regardless of CLI flags)
+- Output files use `"w"` mode — re-runs overwrite cleanly
+- Pool wrapped in context manager for guaranteed cleanup
+- `rstrip("/12")` ID stripping replaced by compiled `re.compile(r'/[12]$')` regex
+- `failed_r1_only` / `failed_r2_only` renamed to `lost_due_to_r1_fail` / `lost_due_to_r2_fail` for clarity
+- N-count exclusion reason now correctly reflects `n_count > max_n` (not `n_count > 0`), preventing false counts when `--max-n > 0`
+- Worker pool size capped at number of samples; excess CPU warning printed
+- Shebang changed to `#!/usr/bin/env python3` for portability
 
-4. **Robust Paired-End Validation**  
-   - Ensures R1 and R2 reads remain synchronized.  
-   - Detects and stops processing if R1/R2 files mismatch in read counts or IDs.
-
-5. **Continuous Summary Reports**  
-   - Generates `fastfilter_summary.csv` or TSV with total reads, reads passing each filter, and pass rates.  
-   - Includes per-sample statistics for better QC tracking.
-
-6. **Dry-Run Mode**  
-   - Allows testing the pipeline without writing files.  
-   - Useful for validating parameter choices or debugging workflows.
-
-7. **Configurable Parameters via CLI**  
-   - Minimum sequence length (`-l`)  
-   - Minimum Phred score (`-s`)  
-   - Maximum homopolymer length (`-p`)  
-   - Number of CPU threads (`-j`)  
-   - Input/output directories (`-i`, `-o`)
-
-8. **Better Memory & I/O Management**  
-   - Batch writing reduces file I/O overhead.  
-   - Handles large datasets efficiently without overloading RAM.
-
----
-
-## **Migration Notes**
-
-- **Output File Names:**  
-  - Old: `<sample>_FILTERED.fastq`  
-  - New: `<sample>_R1_FILTERED.fastq.gz` and `<sample>_R2_FILTERED.fastq.gz`
-
-- **Summary Format:**  
-  - Old: CSV/TXT with per-read tables  
-  - New: CSV/TSV per sample with read counts, filtering reasons, and pass rates
-
-- **Threading & Progress Bars:**  
-  - Multi-threaded processes replace older multiprocessing code.  
-  - Progress bars now stacked for all samples.
-
-- **Dry-Run Behavior:**  
-  - Outputs go to memory/dummy buffers instead of being skipped silently.
-
-- **Error Handling:**  
-  - Mismatched R1/R2 files terminate processing immediately with clear error messages.  
-  - Improves reproducibility and avoids silent failures.
+### Removed
+- `-i` / `--sequences-dir` directory input and auto-discovery logic
+- `inquirer` interactive prompt dependency
+- BioPython dependency (`biopython`)
+- Pandas dependency (`pandas`)
+- `dryrun` flag and logic
+- `query_seqDir()` function
+- Dead code: unreachable `id1 != id2` branch in the sync guard
 
 ---
 
-## **Example Migration Command**
+## [1.0.0] — 2022
 
-**Old command (v1):**
+Initial release (`fastfilter.py`).
 
-python fastfilter.py -i /data/project/cutadapt -o /data/project/fastfilter -l 30  
-
-**New command (v2):**
-
-python fastfilter_pe.py -i /data/project/cutadapt -o /data/project/fastfilter -l 30 -s 30 -p 25 -j 4  
-
-- Adds explicit CPU threads (`-j 4`)  
-- Adds Phred score filter (`-s 30`)  
-- Adds homopolymer maximum length (`-p 25`)  
-
----
-
-## **Recommendations**
-
-1. Test **FastFilter2** on a small dataset first using `--dryrun`.  
-2. Validate that STAR or downstream aligners accept gzipped outputs.  
-3. Review `fastfilter_summary.csv` for thresholds, pass rates, and QC statistics.  
-4. Adjust `-l`, `-s`, `-p` parameters according to your experimental design.  
-
----
-
-## **References**
-
-- FastFilter original implementation: [fastfilter GitHub](https://github.com/GamaPintoLab/fastfilter/blob/main/README.md)  
-- FastFilter2 GitHub: [fastfilter2](https://github.com/GamaPintoLab/fastfilter2/blob/main/README.md)  
-- STAR aligner: [https://github.com/alexdobin/STAR](https://github.com/alexdobin/STAR)
+- Paired-end FASTQ filtering via `-i` input directory
+- Auto-discovery of `_R1_` / `_R2_` file pairs
+- Filters: minimum length, mean Phred quality score, homopolymer runs, N bases, dot characters
+- BioPython (`FastqPhredIterator`, `SeqIO.write`) for FASTQ I/O
+- Pandas for read length statistics
+- Per-sample CSV and overview summary
+- Multiprocessing support via `multiprocessing.Pool`
