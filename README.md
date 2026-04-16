@@ -74,8 +74,8 @@ No build step required. The script runs directly.
 **Paired-end — gzip input:**
 ```bash
 ./fastfilter.py \
-  -r1 sample_R1.fastq.gz \
-  -r2 sample_R2.fastq.gz \
+  -r1 *_R1.fastq.gz \
+  -r2 *_R2.fastq.gz \
   -o results/
 ```
 
