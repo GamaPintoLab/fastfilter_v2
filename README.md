@@ -50,7 +50,7 @@ pip install -r requirements.txt
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/fastfilter.git
+git clone https://github.com/GamaPintoLab/fastfilter_v2
 cd fastfilter
 pip install -r requirements.txt
 chmod +x fastfilter.py
