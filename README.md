@@ -99,7 +99,7 @@ No build step required. The script runs directly.
 
 ## Arguments
 
-| Flag | Long form | Default | Description |
+|  Flag  |    Long form    | Default | Description |
 |------|-----------|---------|-------------|
 | `-r1` | `--r1-files` | — | R1 (forward) FASTQ file(s) — paired-end mode |
 | `-r2` | `--r2-files` | — | R2 (reverse) FASTQ file(s) — paired-end mode |
